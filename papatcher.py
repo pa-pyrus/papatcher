@@ -18,10 +18,10 @@ from operator import itemgetter
 from os import chmod, makedirs, stat, listdir, remove
 from signal import signal, SIGINT
 from stat import S_IEXEC
-from ssl import create_default_context
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import ssl
 import sys
 import os.path
 
@@ -49,7 +49,7 @@ class PAPatcher(object):
                                   "UberName": ubername,
                                   "Password": password})
 
-        ssl_context = create_default_context()
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
         self.connection = HTTPSConnection(UBERNET_HOST, context=ssl_context)
 
     def login(self):
