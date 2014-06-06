@@ -12,7 +12,7 @@ from concurrent import futures
 from getpass import getpass
 from gzip import decompress
 from hashlib import sha1
-from http.client import HTTPSConnection, OK as HTTP_OK
+from http.client import OK as HTTP_OK
 from json import dumps, loads
 from operator import itemgetter
 from os import chmod, makedirs, stat, listdir, remove
@@ -21,9 +21,15 @@ from stat import S_IEXEC
 from urllib.error import URLError
 from urllib.request import urlopen
 
-import ssl
 import sys
 import os.path
+
+try:
+    import ssl
+except ImportError:
+    from http.client import HTTPConnection
+else:
+    from http.client import HTTPSConnection
 
 UBERNET_HOST = "uberent.com"
 GAME_ROOT = os.path.expanduser(os.path.join("~", ".local",
@@ -49,8 +55,12 @@ class PAPatcher(object):
                                   "UberName": ubername,
                                   "Password": password})
 
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
-        self.connection = HTTPSConnection(UBERNET_HOST, context=ssl_context)
+        if "ssl" in globals():
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+            self.connection = HTTPSConnection(UBERNET_HOST,
+                                              context=ssl_context)
+        else:
+            self.connection = HTTPConnection(UBERNET_HOST)
 
     def login(self):
         """
@@ -317,6 +327,21 @@ if __name__ == "__main__":
           "=================")
 
     signal(SIGINT, lambda sig, frame: sys.exit(SIGINT))
+
+    if "ssl" not in globals():
+        while True:
+            print("! SSL is not supported. "
+                  "Login to Ubernet will NOT be encrypted!")
+            cont = input("? Continue [yes|no]: ")
+
+            if "no" == cont.lower():
+                print("! Exiting...")
+                sys.exit(-1)
+            elif "yes" == cont.lower():
+                print("* Proceeding without encryption.")
+                break
+
+            print("! Please type 'yes' or 'no'.")
 
     ubername = input("? UberName: ")
     password = getpass("? Password: ")
