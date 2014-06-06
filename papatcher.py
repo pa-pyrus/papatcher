@@ -66,19 +66,19 @@ class PAPatcher(object):
                                 body=self.credentials)
         response = self.connection.getresponse()
         if response.status is not HTTP_OK:
-            print("Encountered an error: {0} {1}.".format(response.status,
-                                                          response.reason))
+            print("! Encountered an error: {0} {1}.".format(response.status,
+                                                            response.reason))
             return False
 
         # get and parse response data
         raw_data = response.read()
         result = loads(raw_data.decode("utf-8"))
         if "SessionTicket" not in result:
-            print("Result doesn't contain a session ticket.")
+            print("! Result doesn't contain a session ticket.")
             return False
 
         self._session = result["SessionTicket"]
-        print("Got Session Ticket: {0}.".format(self._session))
+        print("* Got Session Ticket: {0}.".format(self._session))
         return True
 
     def get_streams(self):
@@ -97,8 +97,8 @@ class PAPatcher(object):
                                 headers=headers)
         response = self.connection.getresponse()
         if response.status is not HTTP_OK:
-            print("Encountered an error: {0} {1}.".format(response.status,
-                                                          response.reason))
+            print("! Encountered an error: {0} {1}.".format(response.status,
+                                                            response.reason))
             return None
 
         # get and parse response data
@@ -116,7 +116,7 @@ class PAPatcher(object):
         # we no longer need all streams
         del self._streams
 
-        print("Downloading manifest from {0}/{1}/{2}.".format(
+        print("* Downloading manifest from {0}/{1}/{2}.".format(
             self._stream["DownloadUrl"],
             self._stream["TitleFolder"],
             self._stream["ManifestName"]))
@@ -134,7 +134,7 @@ class PAPatcher(object):
             self._manifest = loads(manifest_raw.decode("utf-8"))
             return self._verify_manifest()
         except URLError as err:
-            print("Could not retrieve manifest: {0}.".format(err.reason))
+            print("! Could not retrieve manifest: {0}.".format(err.reason))
             return False
 
     def _verify_manifest(self):
@@ -157,7 +157,7 @@ class PAPatcher(object):
                     old_bundles += 1
 
             if old_bundles:
-                print("Purged {0} old bundles.".format(old_bundles))
+                print("* Purged {0} old bundles.".format(old_bundles))
 
         # verify bundles in parallel
         with futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -172,7 +172,7 @@ class PAPatcher(object):
                     executor.shutdown(wait=False)
                     return False
 
-            print("Need to get {0} bundles.".format(len(self._bundles)))
+            print("* Need to get {0} bundles.".format(len(self._bundles)))
 
             # if we get here there, all bundles were verified
             # we no longer need the manifest
@@ -244,7 +244,7 @@ class PAPatcher(object):
         try:
             response = urlopen(bundle_url)
         except URLError as err:
-            print("Downloading bundle {0} failed: {0}.".format(
+            print("! Downloading bundle {0} failed: {0}.".format(
                 bundle_checksum, err.reason))
             return False
 
@@ -259,7 +259,7 @@ class PAPatcher(object):
             checksum = sha.hexdigest()
 
             if checksum != bundle_checksum:
-                print("Checksums don't match. Expected {0}, got {1}.".format(
+                print("! Checksums don't match. Expected {0}, got {1}.".format(
                     bundle_checksum, checksum))
                 return False
 
@@ -282,7 +282,7 @@ class PAPatcher(object):
                 entry_path = os.path.join(GAME_ROOT,
                                           self._stream["StreamName"],
                                           entry["filename"][1:])
-                print("Handling file {0}".format(entry_path))
+                print("* Extracting {0}".format(entry_path))
 
                 # make sure that path exists
                 base_dir = os.path.dirname(entry_path)
@@ -318,39 +318,39 @@ if __name__ == "__main__":
 
     signal(SIGINT, lambda sig, frame: sys.exit(SIGINT))
 
-    ubername = input("UberName: ")
-    password = getpass("Password: ")
+    ubername = input("? UberName: ")
+    password = getpass("? Password: ")
 
-    print("Creating patcher...")
+    print("* Creating patcher...")
     patcher = PAPatcher(ubername, password)
 
-    print("Logging in to UberNet...")
+    print("* Logging in to UberNet...")
     if not patcher.login():
-        print("Login failed. Exiting...")
+        print("! Login failed. Exiting...")
         sys.exit(-1)
 
-    print("Requesting streams...")
+    print("* Requesting streams...")
     streams = patcher.get_streams()
     if not streams:
-        print("Could not acquire streams. Exiting...")
+        print("! Could not acquire streams. Exiting...")
         sys.exit(-1)
 
     while True:
-        print("Available streams: {0}.".format(", ".join(streams.keys())))
-        stream = input("Select stream: ")
+        print("* Available streams: {0}.".format(", ".join(streams.keys())))
+        stream = input("? Select stream: ")
         if stream in streams:
             break
-        print("Invalid Stream.")
+        print("! Invalid Stream.")
 
-    print("Downloading manifest for stream '{0}'...".format(stream))
+    print("* Downloading manifest for stream '{0}'...".format(stream))
     if not patcher.get_manifest(stream):
-        print("Could not download manifest. Exiting...")
+        print("! Could not download manifest. Exiting...")
         sys.exit(-1)
 
-    print("Patching installation for stream '{0}'...".format(stream))
+    print("* Patching installation for stream '{0}'...".format(stream))
     if not patcher.patch():
-        print("Could not patch stream. Exiting...")
+        print("! Could not patch stream. Exiting...")
         sys.exit(-1)
 
-    print("Successfully updated stream '{0}'.".format(stream))
+    print("* Successfully updated stream '{0}'.".format(stream))
     sys.exit(0)
