@@ -313,8 +313,8 @@ class PAPatcher(object):
 
 
 if __name__ == "__main__":
-    print("Python PA Patcher v0.1\n"
-          "======================")
+    print("Python PA Patcher\n"
+          "=================")
 
     signal(SIGINT, lambda sig, frame: sys.exit(SIGINT))
 
