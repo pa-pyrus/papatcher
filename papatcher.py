@@ -254,7 +254,7 @@ class PAPatcher(object):
         try:
             response = urlopen(bundle_url)
         except URLError as err:
-            print("! Downloading bundle {0} failed: {0}.".format(
+            print("! Downloading bundle {0} failed: {1}.".format(
                 bundle_checksum, err.reason))
             return False
 
