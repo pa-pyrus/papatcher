@@ -8,6 +8,7 @@ Copyright (c) 2014 Pyrus <pyrus@coffee-break.at>
 See the file LICENSE for copying permission.
 """
 
+from argparse import ArgumentParser
 from concurrent import futures
 from getpass import getpass
 from gzip import decompress
@@ -118,7 +119,7 @@ class PAPatcher(object):
                          for stream in result["Streams"]}
         return self._streams
 
-    def get_manifest(self, stream):
+    def get_manifest(self, stream, full):
         if not hasattr(self, "_streams") or stream not in self._streams:
             return False
 
@@ -142,12 +143,12 @@ class PAPatcher(object):
             response = urlopen(manifest_url)
             manifest_raw = decompress(response.read())
             self._manifest = loads(manifest_raw.decode("utf-8"))
-            return self._verify_manifest()
+            return self._verify_manifest(full)
         except URLError as err:
             print("! Could not retrieve manifest: {0}.".format(err.reason))
             return False
 
-    def _verify_manifest(self):
+    def _verify_manifest(self, full):
         if not hasattr(self, "_stream") or not hasattr(self, "_manifest"):
             return False
 
@@ -161,13 +162,13 @@ class PAPatcher(object):
 
             old_bundles = 0
             for cache_file_name in cache_files:
-                if cache_file_name not in bundle_names:
+                if full or cache_file_name not in bundle_names:
                     cache_file = os.path.join(cache_dir, cache_file_name)
                     remove(cache_file)
                     old_bundles += 1
 
             if old_bundles:
-                print("* Purged {0} old bundles.".format(old_bundles))
+                print("* Purged {0} old bundle(s).".format(old_bundles))
 
         # verify bundles in parallel
         with futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -182,12 +183,12 @@ class PAPatcher(object):
                     executor.shutdown(wait=False)
                     return False
 
-            print("* Need to get {0} bundles.".format(len(self._bundles)))
+        print("* Need to get {0} bundle(s).".format(len(self._bundles)))
 
-            # if we get here there, all bundles were verified
-            # we no longer need the manifest
-            del self._manifest
-            return True
+        # if we get here there, all bundles were verified
+        # we no longer need the manifest
+        del self._manifest
+        return True
 
     def _verify_bundle(self, bundle):
         if not hasattr(self, "_stream") or not hasattr(self, "_bundles"):
@@ -328,7 +329,42 @@ if __name__ == "__main__":
 
     signal(SIGINT, lambda sig, frame: sys.exit(SIGINT))
 
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("-u", "--ubername",
+                            action="store", type=str,
+                            help="UberName used for login.")
+    arg_parser.add_argument("-p", "--password",
+                            action="store", type=str,
+                            help="Password used for login.")
+    arg_parser.add_argument("-s", "--stream",
+                            action="store", type=str,
+                            help="Stream being downloaded.")
+    arg_parser.add_argument("-f", "--full",
+                            action="store_true",
+                            help="Patch even unchanged files.")
+    arg_parser.add_argument("--unattended",
+                            action="store_true",
+                            help="Don't ask any questions. If you use this "
+                                 "option, --ubername, --password and --stream "
+                                 "are mandatory")
+
+    arguments = arg_parser.parse_args()
+    unattended = arguments.unattended
+    if (unattended and not (arguments.ubername and
+                            arguments.password and
+                            arguments.stream)):
+        print("! For unattended mode you need to use "
+              "--ubername, --password and --stream. "
+              "Exiting...")
+        sys.exit(-1)
+
     if "ssl" not in globals():
+        if unattended:
+            print("! SSL is not supported. "
+                  "If you want to proceed, start again in interactive mode. "
+                  "Exiting...")
+            sys.exit(-1)
+
         while True:
             print("! SSL is not supported. "
                   "Login to Ubernet will NOT be encrypted!")
@@ -343,8 +379,8 @@ if __name__ == "__main__":
 
             print("! Please type 'yes' or 'no'.")
 
-    ubername = input("? UberName: ")
-    password = getpass("? Password: ")
+    ubername = arguments.ubername or input("? UberName: ")
+    password = arguments.password or getpass("? Password: ")
 
     print("* Creating patcher...")
     patcher = PAPatcher(ubername, password)
@@ -360,15 +396,25 @@ if __name__ == "__main__":
         print("! Could not acquire streams. Exiting...")
         sys.exit(-1)
 
-    while True:
-        print("* Available streams: {0}.".format(", ".join(streams.keys())))
-        stream = input("? Select stream: ")
-        if stream in streams:
-            break
-        print("! Invalid Stream.")
+    stream = arguments.stream
+    if not stream or stream not in streams:
+        if unattended:
+            print("! Invalid Stream. "
+                  "For a selection of streams use interactive mode. "
+                  "Exiting...")
+            sys.exit(-1)
+
+        while True:
+            print("* Available streams: {0}.".format(
+                ", ".join(streams.keys())))
+
+            stream = input("? Select stream: ")
+            if stream in streams:
+                break
+            print("! Invalid Stream.")
 
     print("* Downloading manifest for stream '{0}'...".format(stream))
-    if not patcher.get_manifest(stream):
+    if not patcher.get_manifest(stream, arguments.full):
         print("! Could not download manifest. Exiting...")
         sys.exit(-1)
 
