@@ -10,11 +10,25 @@ The patcher creates a cache of downloaded files in `~/.local/Uber Entertainment/
 papatcher relies on a working python3 (at least v3.2) environment.
 
 ## Usage ##
+The patcher supports both interactive and unattended operation.
+Entering credentials and stream selection can be achieved using command line arguments.
+The patcher will query missing information if it's run in interactive mode.
+In unattended mode, missing information will cause the patcher to terminate.
+
+Start the patcher with `-h` or `--help` for a full list of command line arguments.
+
+### Interactive ###
 1. Run `./papatcher.py`
 2. Enter your UberName and Password
 3. Select the stream you want to use. (Usually `stable`)
 4. Wait for the process to complete.
 5. (Optional) Delete the files from the download cache.
+   If you do this, the patcher will download them again next time it is run.
+
+### Unattended ###
+1. Run `./papatcher.py -u <UberName> -p <Password> -s <Stream> --unattended`
+2. Wait for the process to complete.
+3. (Optional) Delete the files from the download cache.
    If you do this, the patcher will download them again next time it is run.
 
 ## License ##
