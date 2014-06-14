@@ -31,6 +31,9 @@ Start the patcher with `-h` or `--help` for a full list of command line argument
 3. (Optional) Delete the files from the download cache.
    If you do this, the patcher will download them again next time it is run.
 
+## Acknowledgements ##
+This patcher is basically a re-implementation of the [Go PA patcher](https://bitbucket.org/papatcher/papatcher) by Uber Entertainment's very own *William Howe-Lott*.
+
 ## License ##
 Copyright (c) 2014 Pyrus <pyrus@coffee-break.at>  
 See the file LICENSE for copying permission.
