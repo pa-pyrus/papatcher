@@ -259,7 +259,11 @@ class PAPatcher(object):
                 bundle_checksum, err.reason))
             return False
 
-        with open(cache_file_path, "w+b") as cache_file:
+        # remove the file first if it already exists
+        if os.path.exists(cache_file_path):
+            remove(cache_file_path)
+
+        with open(cache_file_path, "x+b") as cache_file:
             cache_file.write(response.read())
             cache_file.flush()
 
@@ -302,7 +306,10 @@ class PAPatcher(object):
                 entry_offset = int(entry["offset"])
                 cache_file.seek(entry_offset)
 
-                entry_file = open(entry_path, "w+b")
+                # remove the file first if it already exists
+                if os.path.exists(entry_path):
+                    remove(entry_path)
+                entry_file = open(entry_path, "xb")
 
                 # data might be compressed further, we know if there is sizeZ
                 if entry["sizeZ"] != "0":
