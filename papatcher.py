@@ -32,6 +32,14 @@ except ImportError:
 else:
     from http.client import HTTPSConnection
 
+try:
+    from os import cpu_count
+except ImportError:
+    from multiprocessing import cpu_count
+finally:
+    CPU_COUNT = cpu_count()
+
+
 UBERNET_HOST = "uberent.com"
 GAME_ROOT = os.path.expanduser(os.path.join("~", ".local",
                                             "Uber Entertainment",
@@ -46,7 +54,7 @@ class PAPatcher(object):
     Logs in to UberNet, retrieves stream information and downloads patches.
     """
 
-    def __init__(self, ubername, password):
+    def __init__(self, ubername, password, threads):
         """
         Initialize the patcher with UberNet credentials. They will be used to
         login, check for and retrieve patches.
@@ -62,6 +70,8 @@ class PAPatcher(object):
                                               context=ssl_context)
         else:
             self.connection = HTTPConnection(UBERNET_HOST)
+
+        self.threads = threads
 
     def login(self):
         """
@@ -171,7 +181,7 @@ class PAPatcher(object):
                 print("* Purged {0} old bundle(s).".format(old_bundles))
 
         # verify bundles in parallel
-        with futures.ThreadPoolExecutor(max_workers=4) as executor:
+        with futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
             # this list will contain the bundles we actually need to download
             self._bundles = list()
 
@@ -222,7 +232,7 @@ class PAPatcher(object):
         if not hasattr(self, "_bundles"):
             return False
 
-        with futures.ThreadPoolExecutor(max_workers=16) as executor:
+        with futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
             bundle_futures = [executor.submit(self._download_bundle, bundle)
                               for bundle in self._bundles]
             for future in futures.as_completed(bundle_futures):
@@ -349,6 +359,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("-f", "--full",
                             action="store_true",
                             help="Patch even unchanged files.")
+    arg_parser.add_argument("-t", "--threads",
+                            action="store", type=int,
+                            default=CPU_COUNT,
+                            help="Number of threads used.")
     arg_parser.add_argument("--unattended",
                             action="store_true",
                             help="Don't ask any questions. If you use this "
@@ -390,7 +404,7 @@ if __name__ == "__main__":
     password = arguments.password or getpass("? Password: ")
 
     print("* Creating patcher...")
-    patcher = PAPatcher(ubername, password)
+    patcher = PAPatcher(ubername, password, arguments.threads)
 
     print("* Logging in to UberNet...")
     if not patcher.login():
