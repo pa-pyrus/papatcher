@@ -188,9 +188,11 @@ class PAPatcher(object):
             bundle_futures = [executor.submit(self._verify_bundle, bundle)
                               for bundle in self._manifest["bundles"]]
 
-            for future in futures.as_completed(bundle_futures):
-                if not future.result():
-                    executor.shutdown(wait=False)
+            for completed in futures.as_completed(bundle_futures):
+                if not completed.result():
+                    # cancel waiting futures
+                    for future in bundle_futures:
+                        future.cancel()
                     return False
 
         print("* Need to get {0} bundle(s).".format(len(self._bundles)))
@@ -235,9 +237,12 @@ class PAPatcher(object):
         with futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
             bundle_futures = [executor.submit(self._download_bundle, bundle)
                               for bundle in self._bundles]
-            for future in futures.as_completed(bundle_futures):
-                if not future.result():
-                    executor.shutdown(wait=False)
+
+            for completed in futures.as_completed(bundle_futures):
+                if not completed.result():
+                    # cancel waiting futures
+                    for future in bundle_futures:
+                        future.cancel()
                     return False
 
             # if we're here everything has been downloaded and extracted
