@@ -13,10 +13,11 @@ from concurrent import futures
 from getpass import getpass
 from gzip import decompress
 from hashlib import sha1
-from http.client import OK as HTTP_OK
+from http.client import OK as HTTP_OK, HTTPSConnection
 from json import dumps, loads
 from operator import itemgetter
-from os import chmod, makedirs, stat, listdir, remove
+from os import chmod, cpu_count, makedirs, stat, listdir, remove
+from ssl import create_default_context
 from signal import signal, SIGINT
 from stat import S_IEXEC
 from urllib.error import URLError
@@ -25,26 +26,12 @@ from urllib.request import urlopen
 import sys
 import os.path
 
-try:
-    import ssl
-except ImportError:
-    from http.client import HTTPConnection
-else:
-    from http.client import HTTPSConnection
-
-try:
-    from os import cpu_count
-except ImportError:
-    from multiprocessing import cpu_count
-finally:
-    CPU_COUNT = cpu_count()
-
-
 UBERNET_HOST = "uberent.com"
 GAME_ROOT = os.path.expanduser(os.path.join("~", ".local",
                                             "Uber Entertainment",
                                             "PA"))
 CACHE_DIR = os.path.join(GAME_ROOT, ".cache")
+CPU_COUNT = cpu_count()
 
 
 class PAPatcher(object):
@@ -64,12 +51,9 @@ class PAPatcher(object):
                                   "UberName": ubername,
                                   "Password": password})
 
-        if "ssl" in globals():
-            ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
-            self.connection = HTTPSConnection(UBERNET_HOST,
-                                              context=ssl_context)
-        else:
-            self.connection = HTTPConnection(UBERNET_HOST)
+        ssl_context = create_default_context()
+        self.connection = HTTPSConnection(UBERNET_HOST,
+                                          context=ssl_context)
 
         self.threads = threads
 
@@ -383,27 +367,6 @@ if __name__ == "__main__":
               "--ubername, --password and --stream. "
               "Exiting...")
         sys.exit(-1)
-
-    if "ssl" not in globals():
-        if unattended:
-            print("! SSL is not supported. "
-                  "If you want to proceed, start again in interactive mode. "
-                  "Exiting...")
-            sys.exit(-1)
-
-        while True:
-            print("! SSL is not supported. "
-                  "Login to Ubernet will NOT be encrypted!")
-            cont = input("? Continue [yes|no]: ")
-
-            if "no" == cont.lower():
-                print("! Exiting...")
-                sys.exit(-1)
-            elif "yes" == cont.lower():
-                print("* Proceeding without encryption.")
-                break
-
-            print("! Please type 'yes' or 'no'.")
 
     ubername = arguments.ubername or input("? UberName: ")
     password = arguments.password or getpass("? Password: ")

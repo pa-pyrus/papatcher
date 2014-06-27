@@ -7,7 +7,7 @@ The game is installed in `~/.local/Uber Entertainment/PA/<StreamName>`.
 The patcher creates a cache of downloaded files in `~/.local/Uber Entertainment/PA/.cache/<StreamName>`.
 
 ## Installation ##
-papatcher relies on a working python3 (at least v3.3) environment.
+papatcher relies on a working python3 (at least v3.4) environment.
 
 ## Usage ##
 The patcher supports both interactive and unattended operation.
