@@ -8,6 +8,8 @@ The patcher creates a cache of downloaded files in `~/.local/Uber Entertainment/
 
 ## Installation ##
 papatcher relies on a working python3 (at least v3.4) environment.
+### Dependencies ###
+* [PycURL](http://pycurl.sourceforge.net/)
 
 ## Usage ##
 The patcher supports both interactive and unattended operation.

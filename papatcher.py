@@ -16,7 +16,8 @@ from hashlib import sha1
 from http.client import OK as HTTP_OK, HTTPSConnection
 from json import dumps, loads
 from operator import itemgetter
-from os import chmod, cpu_count, makedirs, stat, listdir, remove
+from os import cpu_count, environ
+from pathlib import Path
 from ssl import create_default_context
 from signal import signal, SIGINT
 from stat import S_IEXEC
@@ -24,14 +25,33 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 import sys
-import os.path
+
+import pycurl
 
 UBERNET_HOST = "uberent.com"
-GAME_ROOT = os.path.expanduser(os.path.join("~", ".local",
-                                            "Uber Entertainment",
-                                            "PA"))
-CACHE_DIR = os.path.join(GAME_ROOT, ".cache")
+GAME_ROOT = Path(environ["HOME"], ".local", "Uber Entertainment", "PA")
+CACHE_DIR = GAME_ROOT / ".cache"
 CPU_COUNT = cpu_count()
+
+
+class ProgressMeter(object):
+    def __init__(self):
+        self.last_fraction = None
+
+    def display_progress(self, download_total, downloaded,
+                               upload_total, uploaded):
+        if not int(download_total):
+            return
+        fraction = (downloaded / download_total) if downloaded else 0
+
+        # display progress only if it has advanced by at least 1 percent
+        if self.last_fraction and abs(self.last_fraction - fraction) < 0.01:
+            return
+
+        self.last_fraction = fraction
+
+        print("* Progress: {0: >4.0%} of {1} bytes.".format(
+            fraction, int(download_total)), end="\r")
 
 
 class PAPatcher(object):
@@ -41,7 +61,7 @@ class PAPatcher(object):
     Logs in to UberNet, retrieves stream information and downloads patches.
     """
 
-    def __init__(self, ubername, password, threads):
+    def __init__(self, ubername, password, threads, ratelimit):
         """
         Initialize the patcher with UberNet credentials. They will be used to
         login, check for and retrieve patches.
@@ -56,6 +76,7 @@ class PAPatcher(object):
                                           context=ssl_context)
 
         self.threads = threads
+        self.ratelimit = ratelimit
 
     def login(self):
         """
@@ -134,10 +155,10 @@ class PAPatcher(object):
             self._stream["AuthSuffix"])
 
         try:
-            response = urlopen(manifest_url)
-            manifest_raw = decompress(response.read())
-            self._manifest = loads(manifest_raw.decode("utf-8"))
-            return self._verify_manifest(full)
+            with urlopen(manifest_url) as response:
+                manifest_raw = decompress(response.read())
+                self._manifest = loads(manifest_raw.decode("utf-8"))
+                return self._verify_manifest(full)
         except URLError as err:
             print("! Could not retrieve manifest: {0}.".format(err.reason))
             return False
@@ -147,18 +168,18 @@ class PAPatcher(object):
             return False
 
         # clean up cache in the process
-        cache_dir = os.path.join(CACHE_DIR, self._stream["StreamName"])
-        if os.path.exists(cache_dir):
-            cache_files = listdir(cache_dir)
+        cache_dir = CACHE_DIR / self._stream["StreamName"]
+        print("* Verifying contents of cache folder {0}.".format(
+            str(cache_dir)))
 
+        if cache_dir.exists():
             bundle_names = [bundle["checksum"]
                             for bundle in self._manifest["bundles"]]
 
             old_bundles = 0
-            for cache_file_name in cache_files:
-                if full or cache_file_name not in bundle_names:
-                    cache_file = os.path.join(cache_dir, cache_file_name)
-                    remove(cache_file)
+            for cache_file in cache_dir.iterdir():
+                if full or cache_file.name not in bundle_names:
+                    cache_file.unlink()
                     old_bundles += 1
 
             if old_bundles:
@@ -191,20 +212,17 @@ class PAPatcher(object):
             return False
 
         bundle_checksum = bundle["checksum"]
-
-        cache_file_path = os.path.join(CACHE_DIR,
-                                       self._stream["StreamName"],
-                                       bundle_checksum)
+        cache_file = CACHE_DIR / self._stream["StreamName"] / bundle_checksum
 
         # if we don't have that file we need to download it
-        if not os.path.exists(cache_file_path):
+        if not cache_file.exists():
             self._bundles.append(bundle)
             return True
 
         # if we have it, make sure the checksum is correct
-        with open(cache_file_path, "rb") as cache_file:
+        with cache_file.open("rb") as cache_fp:
             sha = sha1()
-            sha.update(cache_file.read())
+            sha.update(cache_fp.read())
             checksum = sha.hexdigest()
 
             if checksum != bundle_checksum:
@@ -218,9 +236,20 @@ class PAPatcher(object):
         if not hasattr(self, "_bundles"):
             return False
 
+        bundle_futures = list()
         with futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
-            bundle_futures = [executor.submit(self._download_bundle, bundle)
-                              for bundle in self._bundles]
+            # download bundles
+            for bundle in self._bundles:
+                bundle_checksum = bundle["checksum"]
+
+                print("* Downloading bundle {0}.".format(bundle_checksum))
+                if not self._download_bundle(bundle):
+                    return False
+
+                # bundle was downloaded, start extraction in parallel
+                print("* Extracting bundle {0}.".format(bundle_checksum))
+                bundle_future = executor.submit(self._extract_bundle, bundle)
+                bundle_futures.append(bundle_future)
 
             for completed in futures.as_completed(bundle_futures):
                 if not completed.result():
@@ -237,13 +266,16 @@ class PAPatcher(object):
             return False
 
         bundle_checksum = bundle["checksum"]
-        cache_file_path = os.path.join(CACHE_DIR,
-                                       self._stream["StreamName"],
-                                       bundle_checksum)
-
+        cache_base = CACHE_DIR / self._stream["StreamName"]
         # make sure that path exists
-        base_dir = os.path.dirname(cache_file_path)
-        makedirs(base_dir, exist_ok=True)
+        if not cache_base.exists():
+            cache_base.mkdir(parents=True)
+
+        cache_file = cache_base / bundle_checksum
+
+        # remove the file first if it already exists
+        if cache_file.exists():
+            cache_file.unlink()
 
         bundle_url = "{0}/{1}/hashed/{2}{3}".format(
             self._stream["DownloadUrl"],
@@ -251,25 +283,34 @@ class PAPatcher(object):
             bundle_checksum,
             self._stream["AuthSuffix"])
 
-        try:
-            response = urlopen(bundle_url)
-        except URLError as err:
-            print("! Downloading bundle {0} failed: {1}.".format(
-                bundle_checksum, err.reason))
-            return False
+        with cache_file.open("x+b") as cache_fp:
+            curl = pycurl.Curl()
+            curl.setopt(pycurl.URL, bundle_url)
+            curl.setopt(pycurl.FOLLOWLOCATION, 1)
+            curl.setopt(pycurl.MAXREDIRS, 5)
+            curl.setopt(pycurl.CONNECTTIMEOUT, 30)
+            curl.setopt(pycurl.TIMEOUT, 300)
+            curl.setopt(pycurl.NOSIGNAL, 1)
+            curl.setopt(pycurl.MAX_RECV_SPEED_LARGE, self.ratelimit)
+            curl.setopt(pycurl.WRITEDATA, cache_fp)
+            curl.setopt(pycurl.NOPROGRESS, 0)
+            progress_meter = ProgressMeter()
+            curl.setopt(pycurl.PROGRESSFUNCTION,
+                        progress_meter.display_progress)
 
-        # remove the file first if it already exists
-        if os.path.exists(cache_file_path):
-            remove(cache_file_path)
-
-        with open(cache_file_path, "x+b") as cache_file:
-            cache_file.write(response.read())
-            cache_file.flush()
+            try:
+                curl.perform()
+            except:
+                print("! Downloading bundle {0} failed!".format(
+                    bundle_checksum))
+                return False
+            finally:
+                curl.close()
 
             # verify checksum
-            cache_file.seek(0)
+            cache_fp.seek(0)
             sha = sha1()
-            sha.update(cache_file.read())
+            sha.update(cache_fp.read())
             checksum = sha.hexdigest()
 
             if checksum != bundle_checksum:
@@ -277,54 +318,48 @@ class PAPatcher(object):
                     bundle_checksum, checksum))
                 return False
 
-        return self._extract_bundle(bundle)
+        # everything worked out OK
+        return True
 
     def _extract_bundle(self, bundle):
         if not hasattr(self, "_stream"):
             return False
 
         bundle_checksum = bundle["checksum"]
-        cache_file_path = os.path.join(CACHE_DIR,
-                                       self._stream["StreamName"],
-                                       bundle_checksum)
+        cache_file = CACHE_DIR / self._stream["StreamName"] / bundle_checksum
 
         # open cache file with gzip
-        with open(cache_file_path, "rb") as cache_file:
+        with cache_file.open("rb") as cache_fp:
+            game_base = GAME_ROOT / self._stream["StreamName"]
             # get entries sorted by offset
             entries = sorted(bundle["entries"], key=itemgetter("offset"))
             for entry in entries:
-                entry_path = os.path.join(GAME_ROOT,
-                                          self._stream["StreamName"],
-                                          entry["filename"][1:])
-                print("* Extracting {0}".format(entry_path))
+                entry_file = game_base / entry["filename"][1:]
 
                 # make sure that path exists
-                base_dir = os.path.dirname(entry_path)
-                makedirs(base_dir, exist_ok=True)
+                if not entry_file.parent.exists():
+                    entry_file.parent.mkdir(parents=True)
 
                 entry_offset = int(entry["offset"])
-                cache_file.seek(entry_offset)
+                cache_fp.seek(entry_offset)
 
                 # remove the file first if it already exists
-                if os.path.exists(entry_path):
-                    remove(entry_path)
-                entry_file = open(entry_path, "xb")
+                if entry_file.exists():
+                    entry_file.unlink()
 
-                # data might be compressed further, we know if there is sizeZ
-                if entry["sizeZ"] != "0":
-                    entry_size = int(entry["sizeZ"])
-                    raw_data = cache_file.read(entry_size)
-                    entry_file.write(decompress(raw_data))
-                else:
-                    entry_size = int(entry["size"])
-                    entry_file.write(cache_file.read(entry_size))
-
-                entry_file.close()
+                with entry_file.open("xb") as entry_fp:
+                    # data might be compressed further, check sizeZ for that
+                    if entry["sizeZ"] != "0":
+                        entry_size = int(entry["sizeZ"])
+                        raw_data = cache_fp.read(entry_size)
+                        entry_fp.write(decompress(raw_data))
+                    else:
+                        entry_size = int(entry["size"])
+                        entry_fp.write(cache_fp.read(entry_size))
 
                 # set executable
                 if "executable" in entry:
-                    st = stat(entry_path)
-                    chmod(entry_path, st.st_mode | S_IEXEC)
+                    entry_file.chmod(entry_file.stat().st_mode | S_IEXEC)
 
         return True
 
@@ -352,6 +387,10 @@ if __name__ == "__main__":
                             action="store", type=int,
                             default=CPU_COUNT,
                             help="Number of threads used.")
+    arg_parser.add_argument("-r", "--ratelimit",
+                            action="store", type=int,
+                            default=0,
+                            help="Limit downloads to bytes/sec.")
     arg_parser.add_argument("--unattended",
                             action="store_true",
                             help="Don't ask any questions. If you use this "
@@ -372,7 +411,8 @@ if __name__ == "__main__":
     password = arguments.password or getpass("? Password: ")
 
     print("* Creating patcher...")
-    patcher = PAPatcher(ubername, password, arguments.threads)
+    patcher = PAPatcher(ubername, password,
+                        arguments.threads, arguments.ratelimit)
 
     print("* Logging in to UberNet...")
     if not patcher.login():
