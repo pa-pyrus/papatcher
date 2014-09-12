@@ -289,7 +289,6 @@ class PAPatcher(object):
             curl.setopt(pycurl.FOLLOWLOCATION, 1)
             curl.setopt(pycurl.MAXREDIRS, 5)
             curl.setopt(pycurl.CONNECTTIMEOUT, 30)
-            curl.setopt(pycurl.TIMEOUT, 300)
             curl.setopt(pycurl.NOSIGNAL, 1)
             curl.setopt(pycurl.MAX_RECV_SPEED_LARGE, self.ratelimit)
             curl.setopt(pycurl.WRITEDATA, cache_fp)
