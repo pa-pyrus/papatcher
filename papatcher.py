@@ -236,9 +236,11 @@ class PAPatcher(object):
         if not hasattr(self, "_bundles"):
             return False
 
-        bundle_futures = list()
         with futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
-            # download bundles
+            bundle_futures = list()
+            # download bundles sorted by size
+            self._bundles.sort(key=lambda bundle: int(bundle["size"]),
+                               reverse=True)
             for bundle in self._bundles:
                 bundle_checksum = bundle["checksum"]
 
