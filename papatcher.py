@@ -39,7 +39,7 @@ class ProgressMeter(object):
         self.last_fraction = None
 
     def display_progress(self, download_total, downloaded,
-                               upload_total, uploaded):
+                         upload_total, uploaded):
         if not int(download_total):
             return
         fraction = (downloaded / download_total) if downloaded else 0
