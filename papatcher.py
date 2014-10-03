@@ -28,10 +28,22 @@ import sys
 
 import pycurl
 
-UBERNET_HOST = "uberent.com"
-GAME_ROOT = Path(environ["HOME"], ".local", "Uber Entertainment", "PA")
-CACHE_DIR = GAME_ROOT / ".cache"
 CPU_COUNT = cpu_count()
+UBERNET_HOST = "uberent.com"
+
+# set up paths according to XDG basedir spec
+if "XDG_DATA_HOME" in environ:
+    DATA_HOME = Path(environ["XDG_DATA_HOME"])
+else:
+    DATA_HOME = Path(environ["HOME"], ".local", "share")
+
+if "XDG_CACHE_HOME" in environ:
+    CACHE_HOME = Path(environ["XDG_CACHE_HOME"])
+else:
+    CACHE_HOME = Path(environ["HOME"], ".cache")
+
+GAME_ROOT = DATA_HOME / "Planetary Annihilation"
+CACHE_DIR = CACHE_HOME / "Planetary Annihilation"
 
 
 class ProgressMeter(object):
