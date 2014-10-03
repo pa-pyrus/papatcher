@@ -2,9 +2,9 @@
 A simple patcher for Planetary Annihilation. It is meant for use on Linux systems.
 
 It takes your Uber credentials and downloads the newest build for the stream of your choice.
-The game is installed in `~/.local/Uber Entertainment/PA/<StreamName>`.
+The game is installed in `$XDG_DATA_HOME/Planetary Annihilation/<StreamName>`.
 
-The patcher creates a cache of downloaded files in `~/.local/Uber Entertainment/PA/.cache/<StreamName>`.
+The patcher creates a cache of downloaded files in `$XDG_CACHE_HOME/Planetary Annihilation/<StreamName>`.
 
 ## Installation ##
 papatcher relies on a working python3 (at least v3.4) environment.
