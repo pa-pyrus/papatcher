@@ -24,6 +24,7 @@ from stat import S_IEXEC
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import atexit
 import sys
 
 import pycurl
@@ -44,6 +45,27 @@ else:
 
 GAME_ROOT = DATA_HOME / "Planetary Annihilation"
 CACHE_DIR = CACHE_HOME / "Planetary Annihilation"
+
+
+class Cursor(object):
+    @staticmethod
+    def hide():
+        """Hide the cursor using ANSI escape codes."""
+        sys.stdout.write("\033[?25l")
+        sys.stdout.flush()
+
+    @staticmethod
+    def show():
+        """Show the cursor using ANSI escape codes."""
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
+
+    @contextmanager
+    def shown():
+        """Show the cursor within a context."""
+        Cursor.show()
+        yield
+        Cursor.hide()
 
 
 class ProgressMeter(object):
@@ -376,12 +398,13 @@ class PAPatcher(object):
 
         return True
 
-
 if __name__ == "__main__":
+    Cursor.hide()
+    atexit.register(Cursor.show)
+    signal(SIGINT, lambda sig, frame: sys.exit(SIGINT))
+
     print("Python PA Patcher\n"
           "=================")
-
-    signal(SIGINT, lambda sig, frame: sys.exit(SIGINT))
 
     arg_parser = ArgumentParser()
     arg_parser.add_argument("-u", "--ubername",
@@ -420,8 +443,9 @@ if __name__ == "__main__":
               "Exiting...")
         sys.exit(-1)
 
-    ubername = arguments.ubername or input("? UberName: ")
-    password = arguments.password or getpass("? Password: ")
+    with Cursor.shown():
+        ubername = arguments.ubername or input("? UberName: ")
+        password = arguments.password or getpass("? Password: ")
 
     print("* Creating patcher...")
     patcher = PAPatcher(ubername, password,
@@ -446,14 +470,15 @@ if __name__ == "__main__":
                   "Exiting...")
             sys.exit(-1)
 
-        while True:
-            print("* Available streams: {0}.".format(
-                ", ".join(streams.keys())))
+        with Cursor.shown():
+            while True:
+                print("* Available streams: {0}.".format(
+                    ", ".join(streams.keys())))
 
-            stream = input("? Select stream: ")
-            if stream in streams:
-                break
-            print("! Invalid Stream.")
+                stream = input("? Select stream: ")
+                if stream in streams:
+                    break
+                print("! Invalid Stream.")
 
     print("* Downloading manifest for stream '{0}'...".format(stream))
     if not patcher.get_manifest(stream, arguments.full):
