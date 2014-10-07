@@ -10,6 +10,7 @@ See the file LICENSE for copying permission.
 
 from argparse import ArgumentParser
 from concurrent import futures
+from contextlib import contextmanager
 from getpass import getpass
 from gzip import decompress
 from hashlib import sha1
